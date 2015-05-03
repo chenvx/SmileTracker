@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>Smile Tracker</title>
+	
+	<script src="js/compatibility.js"></script>
+
+	<script src="js/objectdetect.js"></script>
+	<script src="js/objectdetect.frontalface.js"></script>
+	<script src="js/objectdetect.smile.js"></script>
+	
+	<script src="js/jquery.js"></script>
+	<script src="js/jquery.objectdetect.js"></script>
+	
+	<script>
+	var sqrtI = 0;
+	var sumI = 0;
+	var numI = 0;
+	
+	function capture(video) {
+		var scaleFactor = 0.25;
+		var w = video.videoWidth * scaleFactor;
+		var h = video.videoHeight * scaleFactor;
+		
+		var canvas1 = document.createElement('canvas');
+			canvas1.width  = w;
+			canvas1.height = h;
+		var ctx1 = canvas1.getContext('2d');
+			ctx1.drawImage(video, 0, 0, w, h);
+
+		var canvas2 = document.createElement('canvas');
+			canvas2.width  = w;
+			canvas2.height = h;
+		var ctx2 = canvas2.getContext('2d');
+		var dataURL = myApplet.screenshot();
+		var imageObj = new Image();
+        imageObj.onload = function() {
+			ctx2.drawImage(this, 0, 0, w, h);
+        };
+        imageObj.src = dataURL;
+		
+		var output = document.getElementById('output');
+		output.appendChild(canvas1);
+		output.appendChild(canvas2);
+	} 
+
+	$(window).load(function() {
+	
+		var video = document.getElementById('video'),
+			smilefig = document.getElementById('smilefig'),
+			intensity = document.getElementById('intensity'),
+			threshold = document.getElementById('threshold'),
+			smileflag = false;
+				
+		try {
+			compatibility.getUserMedia({video: true}, function(stream) {
+				try {
+					video.src = compatibility.URL.createObjectURL(stream);
+				} catch (error) {
+					video.src = stream;
+				}
+				compatibility.requestAnimationFrame(play);
+			}, function (error) {
+				alert('WebRTC not available');
+			});
+		} catch (error) {
+			alert(error);
+		}
+		
+		function play() {
+			if (smileflag === false) {
+				compatibility.requestAnimationFrame(play);
+			
+				if (video.paused) video.play();
+			  
+				if (video.readyState === video.HAVE_ENOUGH_DATA) {
+					$(video).objectdetect('all', {size: 400, scaleMin: 9, scaleFactor: 1.1, classifier: objectdetect.frontalface}, function(coords) {
+						if (coords.length > 0) {
+							
+							/* Find coordinates with maximum confidence: */
+							var coord = coords[0];
+							for (var i = coords.length - 1; i > 0; --i)
+								if (coords[i][4] > coord[4]) coord = coords[i];
+							
+							if (coord[4] > 2) {
+								coord[1] = coord[1] + ~~(coord[3]/2);
+								coord[3] = ~~(coord[3]/2);
+							
+								$(video).objectdetect('all', {size: 100, scaleMin: 2, scaleFactor: 1.1, classifier: objectdetect.smile, selection: coord}, function(smilecoords) {
+							
+									if (smilecoords.length > 0) {
+										/* Find coordinates with maximum confidence: */
+										var smileintensity = smilecoords[0][4];
+										for (var i = smilecoords.length - 1; i > 0; --i)
+											if (smilecoords[i][4] > smileintensity) smileintensity = smilecoords[i][4];
+
+										intensity.innerHTML = "Smile intensity: " + smileintensity.toString();
+										
+										var smilethreshold = (sumI+5*Math.sqrt(sqrtI*numI-sumI*sumI))/numI;
+										if (numI > 12) {
+											threshold.innerHTML = "Smile threshold: " + (~~smilethreshold).toString();
+										} else {
+											threshold.innerHTML = "Calibrating... Please don't smile.";
+										}	
+										
+										if (smileintensity > smilethreshold && numI > 12) {
+											smilefig.src = "img/happy.png";
+											smileflag = true;
+											capture(video);
+										} else {
+											sqrtI = sqrtI + smileintensity * smileintensity;
+											sumI = sumI + smileintensity;
+											numI = numI + 1;
+											smilefig.src = "img/neutral.png";
+										}										
+									} else {
+										numI = numI + 1;
+										smilefig.src = "img/neutral.png";
+										intensity.innerHTML = 'Smile intensity: 0';
+									}
+								});					
+							} else {
+								smilefig.src = "img/neutral.png";
+								intensity.innerHTML = 'No face detected';
+							}
+						} else {
+							smilefig.src = "img/neutral.png";
+							intensity.innerHTML = 'No face detected';
+						}
+					});
+				}
+			} else {
+				setTimeout(function(){play()}, 3000);
+				smileflag = false;
+			}
+		}
+		
+	});
+	
+    </script>
+</head>
+
+<body>
+	<applet id="myApplet" code="CaptureCurrentMonitorScreenshot.class" archive="CaptureCurrentMonitorScreenshot.jar" CODEBASE="js/" height=1 width=1></applet>
+	<h1>Smile Tracker</h1>
+	<video id="video" height="360" width="640" style="float: left; margin-right: 1em;"></video>
+	<img id="smilefig" src="img/neutral.png" style="width: 250px;">
+	<img src="img/happy.png" width="1" height="1" border="0">
+	<h2 id="intensity">No face detected</h2>
+	<h2 id="threshold">Smile threshold:</h2>
+	<div id="output" style="display: inline-block; top: 4px; position: relative ;border: dotted 1px #ccc; padding: 2px;"></div>
+</body>
+</html>
